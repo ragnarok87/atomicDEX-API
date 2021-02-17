@@ -641,6 +641,7 @@ impl SwapOps for EthCoin {
     fn validate_fee(
         &self,
         fee_tx: &TransactionEnum,
+        expected_sender: &[u8],
         fee_addr: &[u8],
         amount: &BigDecimal,
     ) -> Box<dyn Future<Item = (), Error = String> + Send> {
@@ -649,6 +650,7 @@ impl SwapOps for EthCoin {
             TransactionEnum::SignedEthTx(t) => t.clone(),
             _ => panic!(),
         };
+        let sender_addr = try_fus!(addr_from_raw_pubkey(expected_sender));
         let fee_addr = try_fus!(addr_from_raw_pubkey(fee_addr));
         let amount = amount.clone();
 
@@ -667,6 +669,13 @@ impl SwapOps for EthCoin {
                 None => return ERR!("Didn't find provided tx {:?} on ETH node", tx),
             };
 
+            if tx_from_rpc.from != sender_addr {
+                return ERR!(
+                    "Fee tx {:?} was sent from wrong address, expected {:?}",
+                    tx_from_rpc,
+                    sender_addr
+                );
+            }
             match selfi.coin_type {
                 EthCoinType::Eth => {
                     if tx_from_rpc.to != Some(fee_addr) {

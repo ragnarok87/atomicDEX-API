@@ -934,3 +934,52 @@ fn test_get_fee_to_send_taker_fee_insufficient_balance() {
         "Expected TradePreimageError::NotSufficientBalance"
     );
 }
+
+#[test]
+fn validate_dex_fee_invalid_sender_eth() {
+    let (_ctx, coin) = eth_coin_for_test(EthCoinType::Eth, vec!["http://eth1.cipig.net:8555".into()]);
+    // the real dex fee sent on mainnet
+    // https://etherscan.io/tx/0x7e9ca16c85efd04ee5e31f2c1914b48f5606d6f9ce96ecce8c96d47d6857278f
+    let tx = coin
+        .web3
+        .eth()
+        .transaction(TransactionId::Hash(
+            "0x7e9ca16c85efd04ee5e31f2c1914b48f5606d6f9ce96ecce8c96d47d6857278f".into(),
+        ))
+        .wait()
+        .unwrap()
+        .unwrap();
+    let tx = signed_tx_from_web3_tx(tx).unwrap().into();
+    let amount: BigDecimal = "0.000526435076465".parse().unwrap();
+    let validate_err = coin
+        .validate_fee(&tx, &*DEX_FEE_ADDR_RAW_PUBKEY, &*DEX_FEE_ADDR_RAW_PUBKEY, &amount)
+        .wait()
+        .unwrap_err();
+    assert!(validate_err.contains("was sent from wrong address"));
+}
+
+#[test]
+fn validate_dex_fee_invalid_sender_erc() {
+    let (_ctx, coin) = eth_coin_for_test(
+        EthCoinType::Erc20("0xa1d6df714f91debf4e0802a542e13067f31b8262".into()),
+        vec!["http://eth1.cipig.net:8555".into()],
+    );
+    // the real dex fee sent on mainnet
+    // https://etherscan.io/tx/0xd6403b41c79f9c9e9c83c03d920ee1735e7854d85d94cef48d95dfeca95cd600
+    let tx = coin
+        .web3
+        .eth()
+        .transaction(TransactionId::Hash(
+            "0xd6403b41c79f9c9e9c83c03d920ee1735e7854d85d94cef48d95dfeca95cd600".into(),
+        ))
+        .wait()
+        .unwrap()
+        .unwrap();
+    let tx = signed_tx_from_web3_tx(tx).unwrap().into();
+    let amount: BigDecimal = "5.548262548262548262".parse().unwrap();
+    let validate_err = coin
+        .validate_fee(&tx, &*DEX_FEE_ADDR_RAW_PUBKEY, &*DEX_FEE_ADDR_RAW_PUBKEY, &amount)
+        .wait()
+        .unwrap_err();
+    assert!(validate_err.contains("was sent from wrong address"));
+}

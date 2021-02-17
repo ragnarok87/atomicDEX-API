@@ -231,6 +231,7 @@ impl SwapOps for UtxoStandardCoin {
     fn validate_fee(
         &self,
         fee_tx: &TransactionEnum,
+        expected_sender: &[u8],
         fee_addr: &[u8],
         amount: &BigDecimal,
     ) -> Box<dyn Future<Item = (), Error = String> + Send> {
