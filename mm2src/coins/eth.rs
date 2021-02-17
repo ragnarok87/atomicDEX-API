@@ -644,6 +644,7 @@ impl SwapOps for EthCoin {
         expected_sender: &[u8],
         fee_addr: &[u8],
         amount: &BigDecimal,
+        min_block_number: u64,
     ) -> Box<dyn Future<Item = (), Error = String> + Send> {
         let selfi = self.clone();
         let tx = match fee_tx {
@@ -675,6 +676,16 @@ impl SwapOps for EthCoin {
                     tx_from_rpc,
                     sender_addr
                 );
+            }
+
+            if let Some(block_number) = tx_from_rpc.block_number {
+                if block_number <= min_block_number.into() {
+                    return ERR!(
+                        "Fee tx {:?} confirmed before min_block {}",
+                        tx_from_rpc,
+                        min_block_number,
+                    );
+                }
             }
             match selfi.coin_type {
                 EthCoinType::Eth => {

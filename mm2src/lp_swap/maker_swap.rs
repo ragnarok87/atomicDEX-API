@@ -457,6 +457,7 @@ impl MakerSwap {
         let taker_amount = MmNumber::from(self.taker_amount.clone());
         let fee_amount = dex_fee_amount_from_taker_coin(&self.taker_coin, &self.r().data.maker_coin, &taker_amount);
         let other_pub = self.r().other_persistent_pub.clone();
+        let taker_coin_start_block = self.r().data.taker_coin_start_block;
 
         let mut attempts = 0;
         loop {
@@ -467,6 +468,7 @@ impl MakerSwap {
                     &*other_pub,
                     &DEX_FEE_ADDR_RAW_PUBKEY,
                     &fee_amount.clone().into(),
+                    taker_coin_start_block,
                 )
                 .compat()
                 .await
