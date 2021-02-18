@@ -858,7 +858,7 @@ where
 
 /// Extracts pubkey from script sig
 fn pubkey_from_script_sig(script: &Script) -> Result<H264, String> {
-    let signature = match script.get_instruction(0) {
+    match script.get_instruction(0) {
         Some(Ok(instruction)) => match instruction.opcode {
             Opcode::OP_PUSHBYTES_71 | Opcode::OP_PUSHBYTES_72 => match instruction.data {
                 Some(bytes) => try_s!(Signature::parse_der(&bytes[..bytes.len() - 1])),
@@ -882,10 +882,41 @@ fn pubkey_from_script_sig(script: &Script) -> Result<H264, String> {
         None => return ERR!("None instruction 1 of script {:?}", script),
     };
 
-    if !script.get_instruction(2).is_none() {
+    if script.get_instruction(2).is_some() {
         return ERR!("Unexpected instruction at position 2 of script {:?}", script);
     }
     Ok(pubkey.serialize_compressed().into())
+}
+
+pub async fn is_tx_confirmed_before_block<T>(coin: &T, tx: &RpcTransaction, block_number: u64) -> Result<bool, String>
+where
+    T: AsRef<UtxoCoinFields> + Send + Sync + 'static,
+{
+    match tx.height {
+        Some(confirmed_at) => Ok(confirmed_at <= block_number),
+        // fallback to a number of confirmations
+        None => {
+            if tx.confirmations > 0 {
+                let current_block = try_s!(coin.as_ref().rpc_client.get_block_count().compat().await);
+                let confirmed_at = current_block + 1 - tx.confirmations as u64;
+                Ok(confirmed_at <= block_number)
+            } else {
+                Ok(false)
+            }
+        },
+    }
+}
+
+pub fn check_all_inputs_signed_by_pub(tx: &UtxoTx, expected_pub: &[u8]) -> Result<bool, String> {
+    for input in &tx.inputs {
+        let script: Script = input.script_sig.clone().into();
+        let pubkey = try_s!(pubkey_from_script_sig(&script));
+        if *pubkey != expected_pub {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
 }
 
 pub fn validate_fee<T>(
@@ -911,12 +942,8 @@ where
         coin.as_ref().conf.checksum_type
     ));
 
-    for input in &tx.inputs {
-        let script: Script = input.script_sig.clone().into();
-        let pubkey = try_fus!(pubkey_from_script_sig(&script));
-        if &*pubkey != sender_pubkey {
-            return Box::new(futures01::future::err(ERRL!("The dex fee was sent from wrong address")));
-        }
+    if !try_fus!(check_all_inputs_signed_by_pub(&tx, sender_pubkey)) {
+        return Box::new(futures01::future::err(ERRL!("The dex fee was sent from wrong address")));
     }
     let fut = async move {
         let amount = try_s!(sat_from_big_decimal(&amount, coin.as_ref().decimals));
@@ -928,30 +955,12 @@ where
                 .await
         );
 
-        match tx_from_rpc.height {
-            Some(confirmed_at) => {
-                if confirmed_at <= min_block_number {
-                    return ERR!(
-                        "Fee tx {:?} confirmed before min_block {}",
-                        tx_from_rpc,
-                        min_block_number,
-                    );
-                }
-            },
-            // fallback to a number of confirmations
-            None => {
-                if tx_from_rpc.confirmations > 0 {
-                    let current_block = try_s!(coin.as_ref().rpc_client.get_block_count().compat().await);
-                    let confirmed_at = current_block + 1 - tx_from_rpc.confirmations as u64;
-                    if confirmed_at <= min_block_number {
-                        return ERR!(
-                            "Fee tx {:?} confirmed before min_block {}",
-                            tx_from_rpc,
-                            min_block_number,
-                        );
-                    }
-                }
-            },
+        if try_s!(is_tx_confirmed_before_block(&coin, &tx_from_rpc, min_block_number).await) {
+            return ERR!(
+                "Fee tx {:?} confirmed before min_block {}",
+                tx_from_rpc,
+                min_block_number,
+            );
         }
         if tx_from_rpc.hex.0 != serialize(&tx).take() {
             return ERR!(
