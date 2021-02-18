@@ -1,6 +1,5 @@
 use super::history::TransferHistoryBuilder;
 use super::*;
-use crate::utxo::utxo_common::is_tx_confirmed_before_block;
 use script_pubkey::{extract_contract_addr_from_script, extract_contract_call_from_script, is_contract_call};
 
 /// `erc20Payment` call details consist of values obtained from [`TransactionOutput::script_pubkey`] and [`TxReceipt::logs`].
@@ -160,7 +159,8 @@ impl Qrc20Coin {
         min_block_number: u64,
     ) -> Result<(), String> {
         let verbose_tx = try_s!(self.utxo.rpc_client.get_verbose_transaction(fee_tx_hash).compat().await);
-        if try_s!(is_tx_confirmed_before_block(self, &verbose_tx, min_block_number).await) {
+        let conf_before_block = utxo_common::is_tx_confirmed_before_block(self, &verbose_tx, min_block_number);
+        if try_s!(conf_before_block.await) {
             return ERR!(
                 "Fee tx {:?} confirmed before min_block {}",
                 verbose_tx,
