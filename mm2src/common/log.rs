@@ -856,6 +856,7 @@ impl Drop for LogState {
     }
 }
 
+#[cfg(feature = "native")]
 pub mod unified_log {
     use super::chunk2log;
     pub use log::LevelFilter;

@@ -32,10 +32,7 @@ use std::path::Path;
 use std::str;
 use std::str::from_utf8;
 
-use crate::common::executor::{spawn, spawn_boxed, Timer};
-use crate::common::mm_ctx::{MmArc, MmCtx};
-use crate::common::privkey::key_pair_from_seed;
-use crate::common::{slurp_url, MM_DATETIME, MM_VERSION};
+#[cfg(feature = "native")]
 use crate::mm2::database::init_and_migrate_db;
 use crate::mm2::lp_network::{p2p_event_process_loop, P2PContext};
 use crate::mm2::lp_ordermatch::{broadcast_maker_orders_keep_alive_loop, lp_ordermatch_loop, orders_kick_start,
@@ -43,6 +40,11 @@ use crate::mm2::lp_ordermatch::{broadcast_maker_orders_keep_alive_loop, lp_order
 use crate::mm2::lp_swap::{running_swaps_num, swap_kick_starts};
 use crate::mm2::rpc::spawn_rpc;
 use bitcrypto::sha256;
+use common::executor::{spawn, spawn_boxed, Timer};
+#[cfg(feature = "native")] use common::mm_ctx::SqliteCtx;
+use common::mm_ctx::{MmArc, MmCtx};
+use common::privkey::key_pair_from_seed;
+use common::{slurp_url, MM_DATETIME, MM_VERSION};
 
 pub fn lp_ports(netid: u16) -> Result<(u16, u16, u16), String> {
     const LP_RPCPORT: u16 = 7783;
@@ -331,10 +333,10 @@ pub async fn lp_init(mypubport: u16, ctx: MmArc) -> Result<(), String> {
     try_s!(lp_passphrase_init(&ctx));
 
     try_s!(fix_directories(&ctx));
-    try_s!(ctx.init_sqlite_connection());
-    try_s!(init_and_migrate_db(&ctx, &ctx.sqlite_connection()));
     #[cfg(feature = "native")]
     {
+        try_s!(ctx.init_sqlite_connection());
+        try_s!(init_and_migrate_db(&ctx, &ctx.sqlite_connection()));
         try_s!(migrate_db(&ctx));
     }
 

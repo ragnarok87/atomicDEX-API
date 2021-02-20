@@ -64,6 +64,7 @@ pub mod jsonrpc_client;
 #[macro_use]
 pub mod log;
 #[macro_use]
+#[path = "mm_metrics/lib.rs"]
 pub mod mm_metrics;
 
 pub mod big_int_str;
@@ -129,7 +130,7 @@ use uuid::Uuid;
 #[cfg(feature = "w-bindgen")] use wasm_bindgen::prelude::*;
 
 pub use num_bigint::BigInt;
-pub use rusqlite;
+#[cfg(feature = "native")] pub use rusqlite;
 
 pub const MM_DATETIME: &str = env!("MM_DATETIME");
 pub const MM_VERSION: &str = env!("MM_VERSION");

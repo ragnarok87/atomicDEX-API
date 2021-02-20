@@ -18,6 +18,7 @@
 //
 use common::executor::spawn;
 use common::mm_ctx::MmArc;
+use common::mm_metrics::{ClockOps, MetricsOps};
 use common::HyRes;
 use futures::{channel::oneshot, lock::Mutex as AsyncMutex, StreamExt};
 use mm2_libp2p::atomicdex_behaviour::{AdexBehaviourCmd, AdexBehaviourEvent, AdexCmdTx, AdexEventRx, AdexResponse,
@@ -256,10 +257,10 @@ pub async fn request_one_peer<T: de::DeserializeOwned>(
     req: P2PRequest,
     peer: String,
 ) -> Result<Option<T>, String> {
-    let metrics_sink = ctx.metrics.sink().expect("Metrics sink is not available");
-    let start = metrics_sink.now();
+    let clock = ctx.metrics.clock().expect("Metrics clock is not available");
+    let start = clock.now();
     let mut responses = try_s!(request_peers::<T>(ctx.clone(), req, vec![peer.clone()]).await);
-    let end = metrics_sink.now();
+    let end = clock.now();
     mm_timing!(ctx.metrics, "peer.outgoing_request.timing", start, end, "peer" => peer);
     if responses.len() != 1 {
         return ERR!("Expected 1 response, found {}", responses.len());

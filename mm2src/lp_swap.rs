@@ -56,12 +56,11 @@
 //
 #![cfg_attr(not(feature = "native"), allow(dead_code))]
 
-use crate::mm2::{database::{my_swaps::{insert_new_swap, select_uuids_by_my_swaps_filter},
-                            stats_swaps::add_swap_to_index},
-                 lp_network::broadcast_p2p_msg};
+use crate::mm2::lp_network::broadcast_p2p_msg;
 use async_std::sync as async_std_sync;
 use bigdecimal::BigDecimal;
 use coins::{lp_coinfind, MmCoinEnum, TradeFee, TradePreimageError, TransactionEnum};
+#[cfg(feature = "native")] use common::mm_ctx::SqliteCtx;
 use common::{bits256, block_on, calc_total_pages,
              executor::{spawn, Timer},
              log::{error, info},
@@ -771,6 +770,37 @@ pub fn my_swaps_dir(ctx: &MmArc) -> PathBuf { ctx.dbdir().join("SWAPS").join("MY
 
 pub fn my_swap_file_path(ctx: &MmArc, uuid: &Uuid) -> PathBuf { my_swaps_dir(ctx).join(format!("{}.json", uuid)) }
 
+#[cfg(feature = "native")]
+pub fn insert_new_swap_to_db(
+    ctx: &MmArc,
+    my_coin: &str,
+    other_coin: &str,
+    uuid: &str,
+    started_at: &str,
+) -> Result<(), String> {
+    crate::mm2::database::my_swaps::insert_new_swap(ctx, my_coin, other_coin, uuid, started_at)
+        .map_err(|e| ERRL!("{}", e))
+}
+
+#[cfg(not(feature = "native"))]
+pub fn insert_new_swap_to_db(
+    _ctx: &MmArc,
+    _my_coin: &str,
+    _other_coin: &str,
+    _uuid: &str,
+    _started_at: &str,
+) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(feature = "native")]
+fn add_swap_to_db_index(ctx: &MmArc, swap: &SavedSwap) {
+    crate::mm2::database::stats_swaps::add_swap_to_index(&ctx.sqlite_connection(), swap)
+}
+
+#[cfg(not(feature = "native"))]
+fn add_swap_to_db_index(_ctx: &MmArc, _swap: &SavedSwap) {}
+
 fn save_stats_swap(ctx: &MmArc, swap: &SavedSwap) -> Result<(), String> {
     let (path, content) = match &swap {
         SavedSwap::Maker(maker_swap) => (
@@ -783,7 +813,7 @@ fn save_stats_swap(ctx: &MmArc, swap: &SavedSwap) -> Result<(), String> {
         ),
     };
     try_s!(write(&path, &content));
-    add_swap_to_index(&ctx.sqlite_connection(), swap);
+    add_swap_to_db_index(ctx, swap);
     Ok(())
 }
 
@@ -1106,8 +1136,16 @@ pub struct MySwapsFilter {
     pub to_timestamp: Option<u64>,
 }
 
+#[cfg(not(feature = "native"))]
+pub fn all_swaps_uuids_by_filter(_ctx: MmArc, _req: Json) -> HyRes {
+    future::err::<Response<Vec<u8>>, String>(ERRL!("all_swaps_uuids_by_filter is only supported in native mode yet"))
+}
+
 /// Returns *all* uuids of swaps, which match the selected filter.
+#[cfg(feature = "native")]
 pub fn all_swaps_uuids_by_filter(ctx: MmArc, req: Json) -> HyRes {
+    use crate::mm2::database::my_swaps::select_uuids_by_my_swaps_filter;
+
     let filter: MySwapsFilter = try_h!(json::from_value(req));
     let db_result = try_h!(select_uuids_by_my_swaps_filter(&ctx.sqlite_connection(), &filter, None));
 
@@ -1144,8 +1182,16 @@ pub struct MyRecentSwapsReq {
     filter: MySwapsFilter,
 }
 
+#[cfg(not(feature = "native"))]
+pub fn my_recent_swaps(_ctx: MmArc, _req: Json) -> HyRes {
+    future::err::<Response<Vec<u8>>, String>(ERRL!("my_recent_swaps is only supported in native mode yet"))
+}
+
 /// Returns the data of recent swaps of `my` node.
+#[cfg(feature = "native")]
 pub fn my_recent_swaps(ctx: MmArc, req: Json) -> HyRes {
+    use crate::mm2::database::my_swaps::select_uuids_by_my_swaps_filter;
+
     let req: MyRecentSwapsReq = try_h!(json::from_value(req));
     let db_result = try_h!(select_uuids_by_my_swaps_filter(
         &ctx.sqlite_connection(),
@@ -1313,7 +1359,7 @@ pub async fn import_swaps(ctx: MmArc, req: Json) -> Result<Response<Vec<u8>>, St
         match swap.save_to_db(&ctx) {
             Ok(_) => {
                 if let Some(info) = swap.get_my_info() {
-                    if let Err(e) = insert_new_swap(
+                    if let Err(e) = insert_new_swap_to_db(
                         &ctx,
                         &info.my_coin,
                         &info.other_coin,

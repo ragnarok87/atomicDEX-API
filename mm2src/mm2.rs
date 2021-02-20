@@ -42,7 +42,10 @@ use std::str;
 use self::lp_native_dex::{lp_init, lp_ports};
 use coins::update_coins_config;
 
-#[path = "database.rs"] pub mod database;
+#[cfg(feature = "native")]
+#[path = "database.rs"]
+pub mod database;
+
 #[path = "lp_network.rs"] pub mod lp_network;
 
 #[path = "lp_ordermatch.rs"] pub mod lp_ordermatch;
@@ -56,13 +59,8 @@ mod mm2_tests;
 /// * `ctx_cb` - callback used to share the `MmCtx` ID with the call site.
 pub fn lp_main(conf: Json, ctx_cb: &dyn Fn(u32)) -> Result<(), String> {
     // std::env::set_var("RUST_LOG", "debug");
-    if let Err(e) = UnifiedLoggerBuilder::default()
-        .level_filter_from_env_or_default(LevelFilter::Info)
-        .console(false)
-        .mm_log(true)
-        .try_init()
-    {
-        log!("Unified logger initialization failed: "(e))
+    if let Err(e) = init_logger() {
+        log!("Logger initialization failed: "(e))
     }
 
     // std::env::set_var("RUST_LOG", "debug");
@@ -300,3 +298,15 @@ fn on_update_config(args: &[OsString]) -> Result<(), String> {
     try_s!(std::fs::write(&dst_path, ser.into_inner()));
     Ok(())
 }
+
+#[cfg(feature = "native")]
+fn init_logger() -> Result<(), String> {
+    UnifiedLoggerBuilder::default()
+        .level_filter_from_env_or_default(LevelFilter::Info)
+        .console(false)
+        .mm_log(true)
+        .try_init()
+}
+
+#[cfg(not(feature = "native"))]
+fn init_logger() -> Result<(), String> { Ok(()) }
