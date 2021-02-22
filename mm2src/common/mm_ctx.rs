@@ -352,34 +352,6 @@ impl MmArc {
         }
     }
 
-    #[cfg(not(feature = "native"))]
-    pub async fn send_to_helpers(&self) -> Result<(), String> {
-        use crate::helperᶜ;
-
-        let ctxʷ = PortableCtx {
-            conf: try_s!(json::to_string(&self.conf)),
-            secp256k1_key_pair: match self.secp256k1_key_pair.as_option() {
-                Some(k) => ByteBuf::from(k.private().layout()),
-                None => ByteBuf::new(),
-            },
-            ffi_handle: self.ffi_handle.as_option().copied(),
-        };
-        let ctxᵇ = try_s!(bencode(&ctxʷ));
-        let hr = try_s!(helperᶜ("ctx2helpers", ctxᵇ).await);
-
-        // Remember the context ID used by the native helpers in order to simplify consecutive syncs.
-        let ctxⁿ: NativeCtx = try_s!(bdecode(&hr));
-        if let Some(ffi_handle) = self.ffi_handle.as_option().copied() {
-            if ffi_handle != ctxⁿ.ffi_handle {
-                return ERR!("ffi_handle mismatch");
-            }
-        } else {
-            try_s!(self.ffi_handle.pin(ctxⁿ.ffi_handle));
-        }
-
-        Ok(())
-    }
-
     /// Tries getting access to the MM context.  
     /// Fails if an invalid MM context handler is passed (no such context or dropped context).
     pub fn from_ffi_handle(ffi_handle: u32) -> Result<MmArc, String> {

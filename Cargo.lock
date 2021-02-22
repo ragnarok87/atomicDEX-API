@@ -787,6 +787,7 @@ dependencies = [
  "regex",
  "rusqlite",
  "serde",
+ "serde_bencode",
  "serde_bytes 0.11.5",
  "serde_derive",
  "serde_json",

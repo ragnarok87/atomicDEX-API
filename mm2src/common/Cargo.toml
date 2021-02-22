@@ -20,7 +20,7 @@ doctest = false
 [dependencies]
 arrayref = "0.3"
 async-std = { version = "1.5", features = ["unstable"] }
-atomic = "^0.4.6"
+atomic = { version = "^0.4.6", features = ["nightly"] }
 async-trait = "0.1"
 backtrace = "0.3"
 base64 = "0.10.0"
@@ -72,6 +72,9 @@ unwrap = "1.2"
 uuid = { version = "0.7", features = ["serde", "v4"] }
 wasm-bindgen = { version = "0.2.50", features = ["serde-serialize", "nightly"], optional = true }
 winapi = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+serde_bencode = "0.2"
 
 [dependencies.web-sys]
 version = "0.3.4"

@@ -577,7 +577,7 @@ struct HostedHttpResponse {
 
 #[cfg(not(feature = "native"))]
 pub mod wio {
-    use super::SlurpFut;
+    use super::SlurpRes;
     use futures::channel::oneshot::{channel, Receiver, Sender};
     use futures::compat::Compat;
     use futures::future::FutureExt;
@@ -632,7 +632,7 @@ pub mod wio {
         Ok((status, headers, hhres.body))
     }
 
-    pub fn slurp_req(request: Request<Vec<u8>>) -> SlurpFut { Box::new(Compat::new(Box::pin(slurp_reqʹ(request)))) }
+    pub async fn slurp_req(request: Request<Vec<u8>>) -> SlurpRes { slurp_reqʹ(request).await }
 }
 
 #[cfg(feature = "native")]
@@ -1883,6 +1883,8 @@ impl fmt::Display for HelperResponse {
 
 #[cfg(not(feature = "native"))]
 pub async fn helperᶜ(helper: &'static str, args: Vec<u8>) -> Result<Vec<u8>, String> {
+    use serde_bencode::de::from_bytes as bdecode;
+
     let helper_request_id = unsafe {
         http_helper_if(
             helper.as_ptr(),
