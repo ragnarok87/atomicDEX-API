@@ -652,9 +652,6 @@ pub fn coin_daemon_data_dir(name: &str, is_asset_chain: bool) -> PathBuf {
     data_dir
 }
 
-#[cfg(not(feature = "native"))]
-pub fn coin_daemon_data_dir(_name: &str, _is_asset_chain: bool) -> PathBuf { unimplemented!() }
-
 /// Attempts to parse native daemon conf file and return rpcport, rpcuser and rpcpassword
 #[cfg(feature = "native")]
 fn read_native_mode_conf(
@@ -697,14 +694,6 @@ fn read_native_mode_conf(
         filename.as_ref().display()
     )));
     Ok((rpc_port, rpc_user.clone(), rpc_password.clone()))
-}
-
-#[cfg(not(feature = "native"))]
-fn read_native_mode_conf(
-    _filename: &dyn AsRef<Path>,
-    network: &BlockchainNetwork,
-) -> Result<(Option<u16>, String, String), String> {
-    unimplemented!()
 }
 
 /// Electrum protocol version verifier.
@@ -1050,11 +1039,14 @@ pub trait UtxoCoinBuilder {
     async fn rpc_client(&self) -> Result<UtxoRpcClientEnum, String> {
         match self.req()["method"].as_str() {
             Some("enable") => {
-                if cfg!(feature = "native") {
+                #[cfg(target_arch = "wasm32")]
+                {
+                    ERR!("Native UTXO mode is only supported in native mode")
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                {
                     let native = try_s!(self.native_client());
                     Ok(UtxoRpcClientEnum::Native(native))
-                } else {
-                    return ERR!("Native UTXO mode is not available in non-native build");
                 }
             },
             Some("electrum") => {

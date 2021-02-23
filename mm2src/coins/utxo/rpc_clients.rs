@@ -997,7 +997,7 @@ pub fn spawn_electrum(
     }
     let ri = rc; // Random ID assigned by the host to connection.
 
-    let responses = Arc::new(Mutex::new(HashMap::new()));
+    let responses = Arc::new(AsyncMutex::new(HashMap::new()));
     let tx = Arc::new(AsyncMutex::new(None));
 
     let config = match req.protocol {
@@ -1178,8 +1178,18 @@ async fn electrum_request_to(
 }
 
 #[cfg(not(feature = "native"))]
+async fn electrum_request_to(
+    _client: ElectrumClient,
+    _request: JsonRpcRequest,
+    _to_addr: String,
+) -> Result<(JsonRpcRemoteAddr, JsonRpcResponse), String> {
+    ERR!("Not supported")
+}
+
+#[cfg(not(feature = "native"))]
 lazy_static! {
-    static ref ELECTRUM_REPLIES: Mutex<HashMap<(i32, i32), ShotSender<()>>> = Mutex::new(HashMap::new());
+    static ref ELECTRUM_REPLIES: std::sync::Mutex<HashMap<(i32, i32), ShotSender<()>>> =
+        std::sync::Mutex::new(HashMap::new());
 }
 
 #[no_mangle]
@@ -1739,6 +1749,7 @@ impl AsRef<TcpStream> for ElectrumStream {
     }
 }
 
+#[cfg(feature = "native")]
 impl AsyncRead for ElectrumStream {
     fn poll_read(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
         match self.get_mut() {
@@ -1748,6 +1759,7 @@ impl AsyncRead for ElectrumStream {
     }
 }
 
+#[cfg(feature = "native")]
 impl AsyncWrite for ElectrumStream {
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         match self.get_mut() {
@@ -1900,7 +1912,7 @@ async fn connect_loop(
 async fn connect_loop(
     _config: ElectrumConfig,
     _addr: SocketAddr,
-    _responses: Arc<Mutex<HashMap<String, JsonRpcResponse>>>,
+    _responses: Arc<AsyncMutex<HashMap<String, JsonRpcResponse>>>,
     _connection_tx: Arc<AsyncMutex<Option<mpsc::Sender<Vec<u8>>>>>,
 ) -> Result<(), ()> {
     unimplemented!()
