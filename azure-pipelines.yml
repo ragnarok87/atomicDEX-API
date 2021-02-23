@@ -11,7 +11,7 @@ trigger:
     include:
       - refs/heads/*
     exclude:
-      - refs/heads/qrc20
+      - refs/heads/fix-wasm-compile
   paths:
     exclude:
       - README.md
