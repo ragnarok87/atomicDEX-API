@@ -1,25 +1,46 @@
 use super::*;
 use crate::now_ms;
 
-/// Increment counter if an MmArc is not dropped yet and metrics system is initialized already.
+/// The dummy macro that imitates [`crate::mm_metrics::native::mm_counter`].
+/// These macros borrow the `$metrics`, `$name`, `$value` and takes ownership of the `$label_key`, `$label_val` to prevent the `unused_variable` warning.
+/// The labels have to be moved because [`metrics_runtime::Sink::increment_counter_with_labels`] also takes ownership of the labels.
 #[macro_export]
 macro_rules! mm_counter {
-    ($metrics:expr, $name:expr, $value:expr) => {};
-    ($metrics:expr, $name:expr, $value:expr, $($labels:tt)*) => {};
+    ($metrics:expr, $name:expr, $value:expr) => {{
+        let _ = (&$metrics, &$name, &$value); // borrow
+    }};
+    ($metrics:expr, $name:expr, $value:expr, $($label_key:expr => $label_val:expr),+) => {{
+        let _ = (&$metrics, &$name, &$value); // borrow
+        let _ = ($($label_key, $label_val),+); // move
+    }};
 }
 
-/// Update gauge if an MmArc is not dropped yet and metrics system is initialized already.
+/// The dummy macro that imitates [`crate::mm_metrics::native::mm_gauge`].
+/// These macros borrow the `$metrics`, `$name`, `$value` and takes ownership of the `$label_key`, `$label_val` to prevent the `unused_variable` warning.
+/// The labels have to be moved because [`metrics_runtime::Sink::update_gauge_with_labels`] also takes ownership of the labels.
 #[macro_export]
 macro_rules! mm_gauge {
-    ($_metrics:expr, $_name:expr, $_value:expr) => {};
-    ($_metrics:expr, $_name:expr, $_value:expr, $($_labels:tt)*) => {};
+    ($metrics:expr, $name:expr, $value:expr) => {{
+        let _ = (&$metrics, &$name, &$value); // borrow
+    }};
+    ($metrics:expr, $name:expr, $value:expr, $($label_key:expr => $label_val:expr),+) => {{
+        let _ = (&$metrics, &$name, &$value); // borrow
+        let _ = ($($label_key, $label_val),+); // move
+    }};
 }
 
-/// Pass new timing value if an MmArc is not dropped yet and metrics system is initialized already.
+/// The dummy macro that imitates [`crate::mm_metrics::native::mm_timing`].
+/// These macros borrow the `$metrics`, `$name`, `$start`, `$end` and takes ownership of the `$label_key`, `$label_val` to prevent the `unused_variable` warning.
+/// The labels have to be moved because [`metrics_runtime::Sink::record_timing_with_labels`] also takes ownership of the labels.
 #[macro_export]
 macro_rules! mm_timing {
-    ($_metrics:expr, $_name:expr, $_start:expr, $_end:expr) => {};
-    ($_metrics:expr, $_name:expr, $_start:expr, $_end:expr, $($_labels:tt)*) => {};
+    ($metrics:expr, $name:expr, $start:expr, $end:expr) => {{
+        let _ = (&$metrics, &$name, &$start, &$end); // borrow
+    }};
+    ($metrics:expr, $name:expr, $start:expr, $end:expr, $($label_key:expr => $label_val:expr),+) => {{
+        let _ = (&$metrics, &$name, &$start, &$end); // borrow
+        let _ = ($($label_key, $label_val),+); // move
+    }};
 }
 
 #[derive(Default)]
