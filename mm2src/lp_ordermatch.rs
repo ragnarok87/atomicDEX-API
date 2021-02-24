@@ -388,6 +388,11 @@ pub enum OrdermatchRequest {
         /// Request using this condition
         trie_roots: HashMap<AlbOrderedOrderbookPair, H64>,
     },
+    BestOrders {
+        coin: String,
+        action: BestOrdersAction,
+        volume: BigRational,
+    },
 }
 
 #[derive(Debug)]
@@ -435,6 +440,9 @@ pub async fn process_peer_request(ctx: MmArc, request: OrdermatchRequest) -> Res
             let response = process_sync_pubkey_orderbook_state(ctx, pubkey, trie_roots).await;
             response.map(|res| res.map(|r| encode_message(&r).expect("Serialization failed")))
         },
+        OrdermatchRequest::BestOrders { coin, action, volume } => {
+            process_best_orders_request(ctx, coin, action, volume).await
+        },
     }
 }
 
@@ -455,6 +463,57 @@ struct GetOrderbookPubkeyItem {
 struct GetOrderbookRes {
     /// Asks and bids grouped by pubkey.
     pubkey_orders: HashMap<String, GetOrderbookPubkeyItem>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct BestOrdersRes {
+    orders: HashMap<String, OrderbookItem>,
+}
+
+async fn process_best_orders_request(
+    ctx: MmArc,
+    coin: String,
+    action: BestOrdersAction,
+    volume: BigRational,
+) -> Result<Option<Vec<u8>>, String> {
+    let ordermatch_ctx = OrdermatchContext::from_ctx(&ctx).expect("ordermatch_ctx must exist at this point");
+    let orderbook = ordermatch_ctx.orderbook.lock().await;
+    let tickers = match orderbook.pairs_existing_for_coin.get(&coin) {
+        Some(tickers) => tickers,
+        None => return Ok(None),
+    };
+    let mut result = HashMap::new();
+    let pairs: Vec<_> = tickers
+        .into_iter()
+        .map(|ticker| (coin.clone(), ticker.clone()))
+        .collect();
+    for pair in pairs.iter() {
+        let orders = match orderbook.ordered.get(pair) {
+            Some(orders) => orders,
+            None => {
+                log::warn!("No orders for pair {:?}", pair);
+                continue;
+            },
+        };
+        let first = match orders.first() {
+            Some(f) => f,
+            None => {
+                log::warn!("No first order for pair {:?}", pair);
+                continue;
+            },
+        };
+        let order = match orderbook.order_set.get(&first.uuid) {
+            Some(o) => o,
+            None => {
+                log::warn!("No order with uuid {:?}", first.uuid);
+                continue;
+            },
+        };
+        result.insert(order.rel.clone(), order.clone());
+    }
+    let response = BestOrdersRes { orders: result };
+    let encoded = rmp_serde::to_vec(&response).expect("rmp_serde::to_vec should not fail here");
+    Ok(Some(encoded))
 }
 
 async fn process_get_orderbook_request(ctx: MmArc, base: String, rel: String) -> Result<Option<Vec<u8>>, String> {
@@ -1802,6 +1861,8 @@ fn collect_orderbook_metrics(ctx: &MmArc, orderbook: &Orderbook) {
 struct Orderbook {
     /// A map from (base, rel).
     ordered: HashMap<(String, String), BTreeSet<OrderedByPriceOrder>>,
+    /// A map from ticker to the set of another tickers to track the existing pairs
+    pairs_existing_for_coin: HashMap<String, HashSet<String>>,
     /// A map from (base, rel).
     unordered: HashMap<(String, String), HashSet<Uuid>>,
     order_set: HashMap<Uuid, OrderbookItem>,
@@ -1889,6 +1950,16 @@ impl Orderbook {
                 price: order.price.clone().into(),
                 uuid: order.uuid,
             });
+
+        self.pairs_existing_for_coin
+            .entry(order.base.clone())
+            .or_insert_with(HashSet::new)
+            .insert(order.rel.clone());
+
+        self.pairs_existing_for_coin
+            .entry(order.rel.clone())
+            .or_insert_with(HashSet::new)
+            .insert(order.base.clone());
 
         self.unordered
             .entry(base_rel)
@@ -3768,4 +3839,61 @@ fn choose_taker_confs_and_notas(
         taker_coin_confs,
         taker_coin_nota,
     }
+}
+
+#[derive(Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BestOrdersAction {
+    Buy,
+    Sell,
+}
+
+#[derive(Debug, Deserialize)]
+struct BestOrdersRequest {
+    coin: String,
+    action: BestOrdersAction,
+    volume: MmNumber,
+}
+
+pub async fn best_orders(ctx: MmArc, req: Json) -> Result<Response<Vec<u8>>, String> {
+    let req: BestOrdersRequest = try_s!(json::from_value(req));
+    let p2p_request = OrdermatchRequest::BestOrders {
+        coin: req.coin,
+        action: req.action,
+        volume: req.volume.into(),
+    };
+
+    let orders = try_s!(request_any_relay::<BestOrdersRes>(ctx.clone(), P2PRequest::Ordermatch(p2p_request)).await);
+    let mut response = HashMap::new();
+    if let Some((p2p_response, peer_id)) = orders {
+        log::debug!("Got best orders {:?} from peer {}", p2p_response, peer_id);
+        for (coin, order) in p2p_response.orders {
+            let price_mm: MmNumber = order.price.clone().into();
+            let max_vol_mm: MmNumber = order.max_volume.clone().into();
+            let min_vol_mm: MmNumber = order.min_volume.clone().into();
+            let entry = OrderbookEntry {
+                coin: coin.clone(),
+                address: "".into(),
+                price: price_mm.to_decimal(),
+                price_rat: price_mm.to_ratio(),
+                price_fraction: price_mm.to_fraction(),
+                max_volume: max_vol_mm.to_decimal(),
+                max_volume_rat: max_vol_mm.to_ratio(),
+                max_volume_fraction: max_vol_mm.to_fraction(),
+                min_volume: min_vol_mm.to_decimal(),
+                min_volume_rat: min_vol_mm.to_ratio(),
+                min_volume_fraction: min_vol_mm.to_fraction(),
+                pubkey: order.pubkey.clone(),
+                age: (now_ms() as i64 / 1000),
+                zcredits: 0,
+                uuid: order.uuid,
+                is_mine: false,
+            };
+            response.insert(coin, entry);
+        }
+    }
+    let res = json!({ "result": response });
+    Response::builder()
+        .body(json::to_vec(&res).expect("Serialization failed"))
+        .map_err(|e| ERRL!("{}", e))
 }

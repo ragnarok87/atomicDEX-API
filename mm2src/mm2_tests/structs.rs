@@ -3,6 +3,7 @@
 /// The helper structs used in testing of RPC responses, these should be separated from actual MM2 code to ensure
 /// backwards compatibility
 use bigdecimal::BigDecimal;
+use common::mm_number::Fraction;
 use num_rational::BigRational;
 use rpc::v1::types::H256 as H256Json;
 use std::collections::{HashMap, HashSet};
@@ -152,4 +153,30 @@ pub struct TakerOrderRpcResult {
 pub struct MyOrdersRpcResult {
     maker_orders: HashMap<Uuid, MakerOrderRpcResult>,
     taker_orders: HashMap<Uuid, TakerOrderRpcResult>,
+}
+
+#[derive(Deserialize)]
+pub struct OrderbookEntry {
+    coin: String,
+    address: String,
+    price: BigDecimal,
+    price_rat: BigRational,
+    price_fraction: Fraction,
+    #[serde(rename = "maxvolume")]
+    max_volume: BigDecimal,
+    max_volume_rat: BigRational,
+    max_volume_fraction: Fraction,
+    min_volume: BigDecimal,
+    min_volume_rat: BigRational,
+    min_volume_fraction: Fraction,
+    pubkey: String,
+    age: i64,
+    zcredits: u64,
+    uuid: Uuid,
+    is_mine: bool,
+}
+
+#[derive(Deserialize)]
+pub struct BestOrdersResponse {
+    pub result: HashMap<String, OrderbookEntry>,
 }
